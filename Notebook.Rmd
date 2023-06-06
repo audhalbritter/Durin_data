@@ -1,0 +1,38 @@
+---
+title: "DC.1 DURIN TOMST Logger Data Cleaning"
+author: "OUDINA Yanis"
+date: "05/06/2023"
+output: html_notebook
+---
+
+# Big Header
+This section explains all the study design of DURIN
+
+## Smaller Header
+### Smaller again header
+#### Smallest
+
+
+```{r load_packages}
+# Install packages
+#install.packages("tidyverse")
+# install.packages("ggplot2")
+# install.packages("readxl")
+
+# Load packages
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+```{r import_data}
+data <- read_xlsx("D:/R/Dossier code/DURIN/data/Phenology data.xlsx")
+```
+
+```{r editing_columns}
+#str(data)
+data$Plot <- as.numeric(data$column1)
+```
+
