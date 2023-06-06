@@ -2,8 +2,11 @@
 ### READ IN DATA ###
 ###########################
 #
-
-source("https://raw.githubusercontent.com/audhalbritter/Three-D/master/R/Climate/soilmoisture_correction.R")
+#install.packages("tidyverse")
+#install.packages("lubridate")
+#install.packages("dataDownloader")
+#install.packages("purrrlyr")
+#$source("https://raw.githubusercontent.com/audhalbritter/Three-D/master/R/Climate/soilmoisture_correction.R")
 library(tidyverse)
 library(lubridate)
 library(dataDownloader)
@@ -29,17 +32,20 @@ unzip("Environment/raw_data/TOMST_microclimate_loggers/Lygra_southern_coastal", 
 #### CLIMATE DATA ####
 
 # Read in meta data
-metatomst <- read_csv2("durin_loggers_metadata.csv", col_types = "ffffffccccccccc") %>%
+metatomst <- read_excel(path="DURIN_data\test_loggers.xlsx", col_names=TRUE, col_types=c("text","text","numeric","numeric","text","numeric","numeric","date","date")) %>%
   mutate(
     Deployement_Date = dmy(Deployement_Date), #dates in correct format
     Retrieval_Date = dmy(Retrieval_Date),
   ) %>%
 
-  select(!c(tomst_logger_1, date_logger1_in)) %>% #we don't need that info anymore, it all starts from logger 2
-  pivot_longer(cols = c(tomst_logger_2, tomst_logger_3), names_to = "logger", values_to = "loggerID") %>%
-  mutate(
-    loggerID = TOMST_Loggers_Number
-  ) %>%
+ # select(!c(tomst_logger_1, date_logger1_in)) %>% #we don't need that info anymore, it all starts from logger 2
+  #pivot_longer(cols = c(tomst_logger_2, tomst_logger_3), names_to = "logger", values_to = "loggerID") %>%
+  #mutate(
+   # loggerID = TOMST_Loggers_Number
+  #) %>%
+
+  select(site:date_out) #select of every
+  )%>%
 
 # metaTomst <- read_csv2("data/logger_info.csv", col_names = TRUE, na = c(""), col_types = "fcffffncnc") %>%
 #   mutate(
@@ -58,7 +64,11 @@ metatomst <- read_csv2("durin_loggers_metadata.csv", col_types = "ffffffcccccccc
 
 
 ### Read in files
-files <- dir(path = "Environment/raw_data/TOMST_microclimate_loggers/Lygra_southern_coastal", pattern = "^data.*\\.csv$", full.names = TRUE, recursive = TRUE)
+files <- dir(path = "data\lygra_0106", pattern = "^data.*\\.csv$", full.names = TRUE, recursive = TRUE)
+#list of files with comma for decimal separator
+odd_files <- dir(path = "data/lygra_0106",
+                 pattern = "^data.*\\.csv$",
+                 recursive = TRUE, full.names = TRUE) %>%
 
 # remove empty file
 
