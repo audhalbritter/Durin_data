@@ -6,11 +6,21 @@
 #install.packages("lubridate")
 #install.packages("dataDownloader")
 #install.packages("purrrlyr")
+#install.packages("readxl")
+# install.packages("fs")
+# install.packages("purrr")
+# install.packages("readr")
+# install.packages("ggplot2")
 #$source("https://raw.githubusercontent.com/audhalbritter/Three-D/master/R/Climate/soilmoisture_correction.R")
 library(tidyverse)
 library(lubridate)
-library(dataDownloader)
+# library(dataDownloader)
 library(purrrlyr)
+library(readxl)
+library(fs)
+library(purrr)
+library(readr)
+library(ggplot2)
 # only needed for soiltemp template
 # source("R/Rgathering/ReadInPlotLevel.R")
 
@@ -18,59 +28,39 @@ library(purrrlyr)
 #          file = "climate_tomst.zip",
 #          path = "data",
 #          remote_path = "Environment/raw_data/TOMST_microclimate_loggers/Lygra_southern_coastal"))
-get_file(node = "f4v9t",
-         file = "LYGRA_2023.06.01.zip",
-         path = "data",
-         remote_path = "Environment/raw_data/TOMST_microclimate_loggers/Lygra_southern_coastal")
+#get_file(node = "f4v9t",
+ #        file = "LYGRA_2023.06.01.zip",
+  #       path = "data",
+#         remote_path = "Environment/raw_data/TOMST_microclimate_loggers/Lygra_southern_coastal")
 #get_file(node = "f4v9t",
 #         file = "INCLINE_metadata_LoggerDates.csv",
 #         path = "data",
 #        remote_path = "Environment/raw_data/TOMST_microclimate_loggers/Lygra_southern_coastal"))
 
-unzip("Environment/raw_data/TOMST_microclimate_loggers/Lygra_southern_coastal", exdir = "data")
+#unzip("Environment/raw_data/TOMST_microclimate_loggers/Lygra_southern_coastal", exdir = "data")
 
 #### CLIMATE DATA ####
 
 # Read in meta data
-metatomst <- read_excel(path="DURIN_data\test_loggers.xlsx", col_names=TRUE, col_types=c("text","text","numeric","numeric","text","numeric","numeric","date","date")) %>%
-  mutate(
-    Deployement_Date = dmy(Deployement_Date), #dates in correct format
-    Retrieval_Date = dmy(Retrieval_Date),
-  ) %>%
+metatomst <- read_excel(path="D:/Cours/DURIN/Code/DURIN_data/test_loggers.xlsx", col_names=TRUE, col_types=c("text","text","numeric","numeric","text","numeric","numeric","date","date"))
+  # mutate(
+  #   date_in = dmy(date_in), #dates in correct format
+  #   date_out = dmy(date_out),
+  # ) %>%
 
- # select(!c(tomst_logger_1, date_logger1_in)) %>% #we don't need that info anymore, it all starts from logger 2
-  #pivot_longer(cols = c(tomst_logger_2, tomst_logger_3), names_to = "logger", values_to = "loggerID") %>%
-  #mutate(
-   # loggerID = TOMST_Loggers_Number
-  #) %>%
-
-  select(site:date_out) #select of every
-  )%>%
-
-# metaTomst <- read_csv2("data/logger_info.csv", col_names = TRUE, na = c(""), col_types = "fcffffncnc") %>%
-#   mutate(
-#     date_logger_in = dmy(date_logger_in),
-#     date_logger2_in = dmy(date_logger2_in)
-#   ) %>%
-#   pivot_longer(cols = c("tomst-logger","tomst_logger_2"), names_to = "tomst", values_to = "loggerID") %>% #putting all the loggerID in one column and creating a new column specifying if it is logger 1 or 2
-#   mutate( #creating column date in and date out for selection of time window
-#     date_in = case_when(tomst == "tomst-logger" ~ date_logger_in,
-#                         tomst == "tomst_logger_2" ~ date_logger2_in),
-#     date_out = case_when(tomst == "tomst-logger" ~ date_logger2_in), #date ou of logger 1 is date in of logger 2, I guess it makes sense
-#     loggerID = as.factor(loggerID)
-#     ) %>%
-#   select(!c(date_logger_in, date_logger2_in, tomst))
-
+metatomst$date_in <- format(metatomst$date_in, "%d/%m/%Y")
+metatomst$date_out <- format(metatomst$date_out, "%d/%m/%Y")
+metatomst$loggerID<- as.factor(metatomst$loggerID)
 
 
 ### Read in files
-files <- dir(path = "data\lygra_0106", pattern = "^data.*\\.csv$", full.names = TRUE, recursive = TRUE)
-#list of files with comma for decimal separator
-odd_files <- dir(path = "data/lygra_0106",
-                 pattern = "^data.*\\.csv$",
-                 recursive = TRUE, full.names = TRUE) %>%
+files <- dir(path = "data/lygra", pattern = "^data.*\\.csv$", full.names = TRUE, recursive = TRUE)
+
+
 
 # remove empty file
+# files <- files[!(files %in% c(
+# ))]
 
 #files <- files[!(files %in% c(
 #  "data/INCLINE_microclimate/data_94194607_2.csv",
@@ -78,48 +68,62 @@ odd_files <- dir(path = "data/lygra_0106",
 
 
 # Function to read in data
-temp <- map_df(set_names(files), function(file) {
+temp_raw <- map_df(set_names(files), function(file) {
   file %>%
     set_names() %>%
-    map_df(~ read_delim(file = file, col_names = FALSE, delim = ";"))
-}, .id = "File")
+    map_dfr(~ read_csv2(file = file,
+                        col_names = FALSE,
+                        # specify column types as not all .csv's match
+                        # some examples of doubles and integers in X4
+                        col_types = "n?nnnnnn"))
+}, .id = "file")
+
+
 
 # import cutting file fro cleaning
 
 # cutting <- read_csv("data/INCLINE_microclimate_cut.csv", na = "", col_types = "ffTT")
-
-gc()
-
-microclimate <- temp %>%
+# Create micrcolimate file merging TOMST and metadata files
+microclimate <- temp_raw %>%
   # rename column names
-  rename("ID" = "X1", "datetime" = "X2", "time_zone" = "X3", "soil_temperature" = "X4", "ground_temperature" = "X5", "air_temperature" = "X6", "RawSoilmoisture" = "X7", "Shake" = "X8", "ErrorFlag" = "X9") %>%
+  rename("ID" = "file", "datetime" = "X2", "time_zone" = "X3", "soil_temperature" = "X4", "ground_temperature" = "X5", "air_temperature" = "X6", "RawSoilmoisture" = "X7", "Shake" = "X8", "ErrorFlag" = "X9") %>%
+  # change the date and time format
   mutate(datetime = ymd_hm(datetime)) %>%
+
   # Soil moisture calibration
   #mutate(SoilMoisture = a * RawSoilmoisture^2 + b * RawSoilmoisture + c) %>%
-  # get logger ID -> not needed anymore, have whole filename now!!!
+
+  # get logger ID by trimming characters from the file name
   mutate(
-    loggerID = substr(File, nchar(File)-13, nchar(File)-6),
+    loggerID = substr(ID, nchar(ID)-24, nchar(ID)-17),
     loggerID = as.factor(loggerID)
   ) %>%
-  select(!c(File, ID)) %>%
-  distinct() %>%
-  left_join(metatomst, by = "loggerID") %>%
+  select(!c(ID, X1,X10)) %>% # remove unnessary columns
+  distinct() %>%  # only choose unique records
+  left_join(metatomst, by = "loggerID",relationship="many-to-many") %>%
   # group_by(loggerID) %>%
   # mutate(
   #   date_out = replace_na(date_out, today("CET")) #the logger still in the field don't have a date_out (NA in the metaData), but we need a date_out to filter. Today's date can only be correct because if you are never running this script on future data ;-)
   # ) %>%
-  filter(
-    datetime > date_in + 1
-    & datetime < date_out #maybe we don't have the data from the logger that broke, which is why are getting an empty df with that line
-  ) %>%
-  mutate( # calculate soil moisture
-    soil_moisture = soil.moist(
-      rawsoilmoist = RawSoilmoisture,
-      soil_temp = soil_temperature,
-      soilclass = "silt_loam" #it is the closest soil class, but still very wrong. The TMS calibration tool does not have any class for our soil
-    )) %>%
-  select(!c(RawSoilmoisture, logger)) %>% # we want vertical tidy data
-  pivot_longer(cols = c(air_temperature, soil_temperature, ground_temperature, soil_moisture), names_to = "sensor", values_to = "value")
+  ## DURIN, do we need this?
+  # filter(
+  #   datetime > date_logger_in + 1
+  #   & datetime < date_logger_out
+  # )%>%
+
+  ######## SOIL MOISTURE TEMPLATE CALCULATION ############
+
+  # mutate( # calculate soil moisture
+  #   soil_moisture = soil.moist(
+  #     rawsoilmoist = RawSoilmoisture,
+  #     soil_temp = soil_temperature,
+  #     soilclass = "silt_loam" #it is the closest soil class, but still very wrong. The TMS calibration tool does not have any class for our soil
+  #   )) %>%
+  # select(!c(RawSoilmoisture, loggerID)) %>% # we want vertical tidy data
+############################################################3
+  pivot_longer(cols = c(air_temperature, soil_temperature, ground_temperature), names_to = "sensor", values_to = "value")
+
+
 
 gc()
 
@@ -127,373 +131,85 @@ gc()
 # cleaning ----------------------------------------------------------------
 
 
-#now we can start cleaning
-microclimate <- microclimate %>%
-  mutate(
-    cutting = case_when(
-      #air temperature cleaning
-      sensor == "air_temperature"
-      & loggerID == 94194607
-      & datetime %in% c(ymd_hms("2019-08-20T00:00:01"):ymd_hms("2019-08-30T00:00:01"))
-      & value < -5 ~ "cut",
-
-      sensor == "air_temperature"
-      & loggerID %in% c("94194653", "94194607", "94194609")
-      & value < -40 ~ "cut",
-
-      sensor == "air_temperature"
-      & loggerID %in% c("94194653", "94194607")
-      & value > 40 ~ "cut",
-
-      sensor == "air_temperature"
-      & loggerID %in% c("94194664")
-      & value < -40 ~ "cut",
-
-      sensor == "air_temperature"
-      & loggerID %in% c("94194624","94194627","94194630","94194689","94194638","94194622","94194623","94194690")
-      & value < -40 ~ "cut",
-
-      sensor == "air_temperature"
-      & loggerID == 94194624
-      & datetime %in% c(ymd_hms("2019-11-01T00:00:01"):ymd_hms("2019-11-10T00:00:01"))
-      & value > 15 ~ "cut",
-
-      #soil temperature cleaning
-      sensor == "soil_temperature"
-      & loggerID %in% c("94194651","94194610", "94194613", "94194615", "94194616", "94194619", "94194652", "94194653", "94194654", "94194657", "94194658", "94194659", "94194660", "94194691", "94194694", "94194695", "94194699", "94205702", "94205731", "94205732","94205703", "94205711", "94205709", "94205745", "94194607")
-      & value > 25 ~ "cut",
-
-      sensor == "soil_temperature"
-      & loggerID %in% c("94194654","94194682","94205720","94205737", "94205734", "94194626", "94194680", "94205760", "94194611","94194617","94194620","94194670","94194696","94194661","94194618","94194662","94194666","94194669", "94194655", "94194681", "94205731")
-      & value > 20 ~ "cut",
-
-      sensor == "soil_temperature"
-      & loggerID %in% c("94194653","94194627","94194689","94194622","94194607")
-      & value < -30 ~ "cut",
-
-      sensor == "soil_temperature"
-      & loggerID == 94194624
-      & datetime %in% c(ymd_hms("2019-11-01T00:00:01"):ymd_hms("2019-11-07T00:00:01"))
-      & value > 1 ~ "cut",
-
-      sensor == "soil_temperature"
-      & loggerID %in% c("94205730", "94205739") &
-        datetime %in% c(ymd_hms("2020-08-10T00:00:01"):ymd_hms("2020-08-14T00:00:01")) ~ "cut",
-
-      sensor == "soil_temperature"
-      & loggerID == 94205735
-      & datetime %in% c(ymd_hms("2021-08-15T00:00:01"):ymd_hms("2021-08-20T00:00:01"))
-      & value > 15 ~ "cut",
-
-      sensor == "soil_temperature"
-      & loggerID %in% c("94194629", "94205758", "94205759", "94205757", "94205736")
-      & datetime %in% c(ymd_hms("2021-06-15T00:00:01"):ymd_hms("2021-06-20T00:00:01")) ~ "cut",
-
-      #ground temperature cleaning
-      sensor == "ground_temperature"
-      & loggerID %in% c("94194689", "94194607", "94194653")
-      & value < -20 ~ "cut",
-
-      sensor == "ground_temperature"
-      & loggerID %in% c("94194653")
-      & value > 50 ~ "cut",
-
-
-      #soil moisture cleaning
-      sensor == "soil_moisture"
-      & value <= 0 ~ "cut",
-
-      sensor == "soil_moisture"
-      & loggerID %in% c("94194689")
-      & datetime %in% c(ymd_hms("2020-07-13T00:00:01"):ymd_hms("2020-10-01T00:00:01")) ~ "cut",
-
-
-      TRUE ~ "keep"
-    )
-  )
-gc()
 
 # graphs ------------------------------------------------------------------
 
 
 #soil temperature
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "soil_temperature" &
-#       site == "Gudmedalen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_soil_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "soil_temperature" &
+          datetime > "2023-04-22" &
+          plotID == plot_number
+      )
 
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "soil_temperature" &
-#       site == "Skjellingahaugen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value, color = "cutting")) +
+      geom_line(aes(group = loggerID)) +
+      scale_color_manual(values = c(
+        "keep" = "#1e90ff",
+        "cut" = "#ff0800"
+      )) +
+      scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
+      facet_wrap(vars(loggerID), ncol = 3, scales = "free")
 
+    ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+#ground_temperature
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_ground_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
 
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "soil_temperature" &
-#       site == "Lavisdalen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "ground_temperature" &
+          datetime > "2023-04-22" &
+          plotID == plot_number
+      )
 
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value, color = "cutting")) +
+      geom_line(aes(group = loggerID)) +
+      scale_color_manual(values = c(
+        "keep" = "#1e90ff",
+        "cut" = "#ff0800"
+      )) +
+      scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
+      facet_wrap(vars(loggerID), ncol = 3, scales = "free")
 
+    ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
 
-# gc()
+#air_temperature
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_air_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
 
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "air_temperature" &
+          datetime > "2023-04-22" &
+          plotID == plot_number
+      )
 
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "soil_temperature" &
-#       site == "Ulvehaugen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.1, aes(group = loggerID)) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value, color = "cutting")) +
+      geom_line(aes(group = loggerID)) +
+      scale_color_manual(values = c(
+        "keep" = "#1e90ff",
+        "cut" = "#ff0800"
+      )) +
+      scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
+      facet_wrap(vars(loggerID), ncol = 3, scales = "free")
 
-#ground temperature
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "ground_temperature" &
-#       site == "Gudmedalen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "ground_temperature" &
-#       site == "Skjellingahaugen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-
-# microclimate %>% #clean
-#   filter(
-#     sensor == "ground_temperature" &
-#       site == "Lavisdalen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-
-
-# gc()
-
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "ground_temperature" &
-#       site == "Ulvehaugen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#         "keep" = "#1e90ff",
-#         "cut" = "#ff0800"
-#       )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-#air temperature
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "air_temperature" &
-#       site == "Gudmedalen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "air_temperature" &
-#       site == "Skjellingahaugen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "air_temperature" &
-#       site == "Lavisdalen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-
-
-# gc()
-
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "air_temperature" &
-#       site == "Ulvehaugen"
-#     ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.1, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#         "keep" = "#1e90ff",
-#         "cut" = "#ff0800"
-#       )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-#soil_moisture
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "soil_moisture" &
-#       site == "Gudmedalen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "soil_moisture" &
-#       site == "Skjellingahaugen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "soil_moisture" &
-#       site == "Lavisdalen"
-#   ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.04, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#     "keep" = "#1e90ff",
-#     "cut" = "#ff0800"
-#   )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-
-
-# gc()
-
-# microclimate %>% #cleaned
-#   filter(
-#     sensor == "soil_moisture" &
-#       site == "Ulvehaugen"
-#     ) %>%
-#   ggplot(aes(x = datetime, y = value, color = cutting)) +
-#   geom_point(size = 0.1, aes(group = loggerID)) +
-#   scale_color_manual(values = c(
-#         "keep" = "#1e90ff",
-#         "cut" = "#ff0800"
-#       )) +
-#   scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
-#   # scale_x_date(date_labels = "%H:%M:%S") +
-#   facet_wrap(vars(loggerID), ncol = 3, scales = "free") +
-#   ggsave("microclimate.png", height = 40, width = 80, units = "cm")
-
-
+    ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
 
 
 # microclimate %>%
@@ -515,3 +231,6 @@ write_csv(microclimate_clean, "data_cleaned/INCLINE_microclimate.csv")
 
 
 
+
+# #############
+# Create micrcolimate file merging TOMST and metadata files
