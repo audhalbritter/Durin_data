@@ -1,0 +1,545 @@
+---
+title: "DC.1 DURIN TOMST Logger Data Cleaning"
+author: "OUDINA Yanis"
+date: "05/06/2023"
+output: html_notebook
+---
+
+To start, you should simply install all the packages requiered to run the code.
+```{r install_packages}
+install.packages("tidyverse")
+install.packages("lubridate")
+install.packages("dataDownloader")
+install.packages("purrrlyr")
+install.packages("readxl")
+install.packages("fs")
+install.packages("purrr")
+install.packages("readr")
+install.packages("ggplot2")
+```
+
+And to load them.
+
+```{r load_packages}
+
+source("https://raw.githubusercontent.com/audhalbritter/Three-D/master/R/Climate/soilmoisture_correction.R")
+library(tidyverse)
+library(lubridate)
+# library(dataDownloader)
+library(purrrlyr)
+library(readxl)
+library(fs)
+library(purrr)
+library(readr)
+library(ggplot2)
+source("soilmoisture_correction.R")
+```
+
+This section is the one importing the data: metadata & loggers data.
+You may have to change this depending on where your data are. You can also import them directly from OSF if the "Datadownloader" package is working.
+
+It also makes small changes on the data naming/format.
+
+```{r import_data}
+
+# Read in meta data
+metatomst <- read_excel(path="durin_tomst_microclimate_loggers_metadata.xlsx", col_names=TRUE, col_types=c("text","text","numeric","numeric","text","text","numeric","numeric","numeric","text","text","date","date","text"))#
+
+# Change formats
+# Date format to day/month/year in 01/12/1990 format
+# PlotID and LoggerID to factor to match later scripts
+metatomst$date_in <- format(metatomst$date_in, "%d/%m/%Y")
+metatomst$date_out <- format(metatomst$date_out, "%d/%m/%Y")
+metatomst$loggerID <- as.factor(metatomst$loggerID)
+metatomst$plotID <- as.factor(as.numeric(metatomst$plotID))
+# Check loggerID and plotID's as they don't seem to stay correct format.
+unique(metatomst$loggerID) # Should be 116
+unique(metatomst$plotID) # Should be 1.1, 1.2, 1.3 >> 9.1, 9.2, 9.3 for 27 unique values
+
+### Read in files
+files <- dir(path = "data/lygra", pattern = "^data.*\\.csv$", full.names = TRUE, recursive = TRUE)
+```
+
+Here the data are read in the TOMST loggers files and create new objects to work on.
+
+```{r read_organize_data}
+microclimate <- temp_raw %>%
+  # rename column names
+  rename("ID" = "file", "datetime" = "X2", "time_zone" = "X3", "soil_temperature" = "X4", "ground_temperature" = "X5", "air_temperature" = "X6", "RawSoilmoisture" = "X7", "Shake" = "X8", "ErrorFlag" = "X9") %>%
+  # change the date and time format
+  mutate(datetime = ymd_hm(datetime)) %>%
+
+  # get logger ID by trimming characters from the file name
+  mutate(
+    loggerID = substr(ID, nchar(ID)-24, nchar(ID)-17),
+    loggerID = as.factor(loggerID)
+  ) %>%
+  select(!c(ID, X1,X10)) %>% # remove unnessary columns
+  distinct() %>%  # only choose unique records
+  left_join(metatomst, by = "loggerID",relationship="many-to-many") %>%
+   group_by(loggerID) %>%
+  filter(
+     datetime > "2023-04-23 00:00:01"
+   ) %>%
+
+ #soil moisture calibration
+  mutate( # calculate soil moisture
+    soil_moisture = soil.moist(
+      rawsoilmoist = RawSoilmoisture,
+      soil_temp = soil_temperature,
+      soilclass = "silt_loam" #it is the closest soil class, but still very wrong. The TMS calibration tool does not have any class for our soil
+    )) %>%
+  select(!c(RawSoilmoisture)) %>% # we want vertical tidy data
+
+    # Choose and order columns to keep for a wide-format database
+    select(c(datetime, site, fire_class, drt_treatment, plotID, gps_loc, species, plantID,
+             loggerID, date_in, date_out, distFocalInd, neighbourPlant, neighbourSpecies,
+             air_temperature, ground_temperature, soil_temperature, soil_moisture,
+             Shake, ErrorFlag, notes))
+  # Save clean file
+   current_time <- format(Sys.time(), "%d%m%Y_%H%M%S")
+   write_csv(microclimate, file = paste("DURIN_clean_microclimate_2023_",current_time,".csv"))
+  
+microclimate <- microclimate %>%
+  select(c(datetime, site, fire_class, drt_treatment, plotID, gps_loc, species, plantID,
+             loggerID, date_in, date_out, distFocalInd, neighbourPlant, neighbourSpecies,
+             air_temperature, ground_temperature, soil_temperature, soil_moisture,
+             Shake, ErrorFlag, notes)) %>%
+
+  pivot_longer(cols = c(air_temperature, soil_temperature, ground_temperature, soil_moisture), names_to = "sensor", values_to = "value")
+
+
+
+
+gc()
+
+
+```
+
+The objective of this section is to clean the data as much as possible before. In order to do this, we will try to avoid errors of measurements. They can be multiple (e.g bad calibration, aberrant measure,...)
+
+Each measure will then have a specific "cutting" code: keep, cut, suspicious that is linked to the way we will treat these data.
+
+Also, here is a list of loggers having shown some problems:
+94195238 - soil_moisture
+94195237 - air_temperature
+95221050 - soil_temperature
+94195238 - soil_moisture
+
+```{r data_cleaning}
+microclimate <- microclimate %>% 
+  mutate(
+    cutting = case_when(
+      #air temperature cleaning
+      sensor == "air_temperature"
+      & value < -20 ~ "cut",
+      
+      #soil temperature cleaning
+      
+      sensor == "soil_temperature"
+     & value < -20 ~ "cut",
+     
+      #ground temperature cleaning
+      sensor == "ground_temperature"
+      & value < -20 ~ "cut",
+      
+      
+     
+      #soil moisture cleaning
+      sensor == "soil_moisture"
+      & value <= 0 ~ "cut",
+      
+      
+      TRUE ~ "keep"
+    )
+  )
+```
+
+Here, this will save you data for logger and stock them as .png plots. You will have one file per plotID (1.1, 1.2, ... ) per data (soil_moisture, soil_temp....) and 
+
+```{r plot_data_plotID_sensor_species}
+# #soil temperature
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_soil_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
+
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "soil_temperature" &
+          datetime > "2023-04-22" &
+          plotID == plot_number &
+          cutting != "cut"
+      ) %>%
+      group_by(loggerID) %>%
+      mutate(logger_species = paste(loggerID, site, plotID, drt_treatment, species, sep = " ")) # Add the column "logger_species" containing the concatenation of "loggerID", "plotID", "drt_treatment", and "species"
+
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value, color = "cutting")) +
+      geom_line(aes(group = logger_species)) +
+      scale_color_manual(values = c(
+        "keep" = "#1e90ff",
+        "suspect" = "#ff0800"
+      )) +
+      scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
+      facet_wrap(vars(logger_species), ncol = 3, scales = "free") # Use the column "logger_species" for facet_wrap
+
+    ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+
+#ground_temperature
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_ground_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
+
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "ground_temperature" &
+          datetime > "2023-04-22" &
+          plotID == plot_number &
+          cutting != "cut"
+      ) %>%
+      group_by(loggerID) %>%
+      mutate(logger_species = paste(loggerID, site, plotID, drt_treatment, species, sep = " ")) # Add the column "logger_species" containing the concatenation of "loggerID", "plotID", "drt_treatment", and "species"
+
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value, color = "cutting")) +
+      geom_line(aes(group = logger_species)) +
+      scale_color_manual(values = c(
+        "keep" = "#1e90ff",
+        "suspect" = "#ff0800"
+      )) +
+      scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
+      facet_wrap(vars(logger_species), ncol = 3, scales = "free") # Use the column "logger_species" for facet_wrap
+
+    ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+
+#air_temperature
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_air_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
+
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "air_temperature" &
+          datetime > "2023-04-22" &
+          plotID == plot_number &
+          cutting != "cut"
+      ) %>%
+      group_by(loggerID) %>%
+      mutate(logger_species = paste(loggerID, site, plotID, drt_treatment, species, sep = " ")) # Add the column "logger_species" containing the concatenation of "loggerID", "plotID", "drt_treatment", and "species"
+
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value, color = "cutting")) +
+      geom_line(aes(group = logger_species)) +
+      scale_color_manual(values = c(
+        "keep" = "#1e90ff",
+        "suspect" = "#ff0800"
+      )) +
+      scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
+      facet_wrap(vars(logger_species), ncol = 3, scales = "free") # Use the column "logger_species" for facet_wrap
+
+    ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+
+
+
+#soil_moisture
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_soil_moisture_", as.character(i), "_", as.character(j), ".png", sep = "")
+
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "soil_moisture" &
+          datetime > "2023-04-22" &
+          plotID == plot_number &
+          cutting != "cut"
+      ) %>%
+      group_by(loggerID) %>%
+      mutate(logger_species = paste(loggerID, site, plotID, drt_treatment, species, sep = " ")) # Add the column "logger_species" containing the concatenation of "loggerID", "plotID", "drt_treatment", and "species"
+
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value, color = "cutting")) +
+      geom_line(aes(group = logger_species)) +
+      scale_color_manual(values = c(
+        "keep" = "#1e90ff",
+        "suspect" = "#ff0800"
+      )) +
+      scale_x_datetime(date_breaks = "1 month", minor_breaks = "10 day", date_labels = "%e/%m/%y") +
+      facet_wrap(vars(logger_species), ncol = 3, scales = "free") # Use the column "logger_species" for facet_wrap
+
+    ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+```
+
+Same, here the goal is to plot the data. The goal is to sort the .png by plotID, to have only 1 plot per png but to have the 3 to 5 species on it.
+
+```{r plot_data_plotID_sensor_merged}
+# #soil temperature
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_soil_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
+
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "soil_temperature" &
+          datetime > "2023-04-23" &
+          plotID == plot_number &
+          cutting != "cut"
+      ) %>%
+      group_by(loggerID) %>%
+      mutate(logger_species = paste(loggerID, site, plotID, drt_treatment, sep = " "))
+
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value)) +
+      geom_line(aes(group = loggerID, color = species)) +
+      scale_color_manual(values = c(
+        "Control" = "#7876B1",
+        "Calluna vulgaris" = "#E18727",
+        "Empetrum nigrum" = "#20854E",
+        "Vaccinium vitis idea" = "#BC3C29",
+        "Vaccnium myrtillus" = "#0072B5"
+      )) +
+      scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+     # Specify the x, y and colour axis labels, rather than using default names from dataset
+      labs(x = "Date", y = " Air Temperature (Celsius)", colour = "Focal Species")
+      ylim(-2,40)
+
+      ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+
+#ground_temperature
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_ground_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
+
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "ground_temperature" &
+          datetime > "2023-04-23" &
+          plotID == plot_number &
+          cutting != "cut"
+      ) %>%
+      group_by(loggerID) %>%
+      mutate(logger_species = paste(loggerID, site, plotID, drt_treatment, sep = " "))
+
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value)) +
+      geom_line(aes(group = loggerID, color = species)) +
+      scale_color_manual(values = c(
+        "Control" = "#7876B1",
+        "Calluna vulgaris" = "#E18727",
+        "Empetrum nigrum" = "#20854E",
+        "Vaccinium vitis idea" = "#BC3C29",
+        "Vaccnium myrtillus" = "#0072B5"
+      )) +
+      scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+     # Specify the x, y and colour axis labels, rather than using default names from dataset
+      labs(x = "Date", y = " Air Temperature (Celsius)", colour = "Focal Species")
+      ylim(-2,40)
+
+      ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+
+
+#air_temperature
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_air_temperature_", as.character(i), "_", as.character(j), ".png", sep = "")
+
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "air_temperature" &
+          datetime > "2023-04-23" &
+          plotID == plot_number &
+          cutting != "cut"
+      ) %>%
+      group_by(loggerID) %>%
+      mutate(logger_species = paste(loggerID, site, plotID, drt_treatment, sep = " "))
+
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value)) +
+      geom_line(aes(group = loggerID, color = species)) +
+      scale_color_manual(values = c(
+        "Control" = "#7876B1",
+        "Calluna vulgaris" = "#E18727",
+        "Empetrum nigrum" = "#20854E",
+        "Vaccinium vitis idea" = "#BC3C29",
+        "Vaccnium myrtillus" = "#0072B5"
+      )) +
+      scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+     # Specify the x, y and colour axis labels, rather than using default names from dataset
+      labs(x = "Date", y = " Air Temperature (Celsius)", colour = "Focal Species")
+      ylim(-2,40)
+
+      ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+
+
+#soil_moisture
+for (i in 1:9) {
+  for (j in 1:3) {
+    plot_number <- i + j/10
+    file_name <- paste("loggers_soil_moisture_", as.character(i), "_", as.character(j), ".png", sep = "")
+
+    filtered_data <- microclimate %>%
+      filter(
+        sensor == "soil_moisture" &
+          datetime > "2023-04-23" &
+          plotID == plot_number &
+          cutting != "cut"
+      ) %>%
+      group_by(loggerID) %>%
+      mutate(logger_species = paste(loggerID, site, plotID, drt_treatment, sep = " "))
+
+    plot <- ggplot(filtered_data, aes(x = datetime, y = value)) +
+      geom_line(aes(group = loggerID, color = species)) +
+      scale_color_manual(values = c(
+        "Control" = "#7876B1",
+        "Calluna vulgaris" = "#E18727",
+        "Empetrum nigrum" = "#20854E",
+        "Vaccinium vitis idea" = "#BC3C29",
+        "Vaccnium myrtillus" = "#0072B5"
+      )) +
+      scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+     # Specify the x, y and colour axis labels, rather than using default names from dataset
+      labs(x = "Date", y = " Air Temperature (Celsius)", colour = "Focal Species")
+      ylim(0.15,0.6)
+
+      ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+  }
+}
+```
+
+here the goal is at the end to have 3 .png with 9 plots, each plot has 5 species and it and they are ordered by drt_treatment and by the replicate number.
+
+```{r plot_data_drought_aged_specie}
+#air temperature
+age_vector <- c("Pioneer", "Building", "Mature")
+for (i in 1:3) {
+  file_name <- paste("loggers_air_temperature_", age_vector[i], ".png", sep = "")
+  
+  filtered_data <- microclimate %>%
+    filter(
+      sensor == "air_temperature" &
+        datetime > "2023-04-23" &
+        fire_class == age_vector[i] &
+        cutting != "cut" 
+    ) %>%
+    group_by(fire_class)  
+
+  plot <- ggplot(filtered_data, aes(x = datetime, y = value)) +
+    geom_line(aes(group = loggerID, color = species)) +
+    scale_color_manual(values = c(
+      "Control" = "#7876B1",
+      "Calluna vulgaris" = "#E18727",
+      "Empetrum Negrum" = "#20854E",
+      "Vaccinium vitis idea" = "#BC3C29",
+      "Vaccinium myrtillus" = "#0072B5"
+    )) +
+    scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    facet_grid(drt_treatment ~ substring(as.character(plotID), first = 1, last = 1), scale="free") +
+    ylim(-10, 30)
+  
+  ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+}
+
+#ground temperature
+age_vector <- c("Pioneer", "Building", "Mature")
+for (i in 1:3) {
+  file_name <- paste("loggers_ground_temperature_", age_vector[i], ".png", sep = "")
+  
+  filtered_data <- microclimate %>%
+    filter(
+      sensor == "ground_temperature" &
+        datetime > "2023-04-23" &
+        fire_class == age_vector[i] &
+        cutting != "cut" 
+    ) %>%
+    group_by(fire_class)  
+
+  plot <- ggplot(filtered_data, aes(x = datetime, y = value)) +
+    geom_line(aes(group = loggerID, color = species)) +
+    scale_color_manual(values = c(
+      "Control" = "#7876B1",
+      "Calluna vulgaris" = "#E18727",
+      "Empetrum Negrum" = "#20854E",
+      "Vaccinium vitis idea" = "#BC3C29",
+      "Vaccinium myrtillus" = "#0072B5"
+    )) +
+    scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    facet_grid(drt_treatment ~ substring(as.character(plotID), first = 1, last = 1), scale="free") +
+    ylim(-10, 30)
+  
+  ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+}
+
+#soil temp
+age_vector <- c("Pioneer", "Building", "Mature")
+for (i in 1:3) {
+  file_name <- paste("loggers_soil_temperature_", age_vector[i], ".png", sep = "")
+  
+  filtered_data <- microclimate %>%
+    filter(
+      sensor == "soil_temperature" &
+        datetime > "2023-04-23" &
+        fire_class == age_vector[i] &
+        cutting != "cut" 
+    ) %>%
+    group_by(fire_class)  
+
+  plot <- ggplot(filtered_data, aes(x = datetime, y = value)) +
+    geom_line(aes(group = loggerID, color = species)) +
+    scale_color_manual(values = c(
+      "Control" = "#7876B1",
+      "Calluna vulgaris" = "#E18727",
+      "Empetrum Negrum" = "#20854E",
+      "Vaccinium vitis idea" = "#BC3C29",
+      "Vaccinium myrtillus" = "#0072B5"
+    )) +
+    scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    facet_grid(drt_treatment ~ substring(as.character(plotID), first = 1, last = 1), scale="free") +
+    ylim(-10, 30)
+  
+  ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+}
+
+#soil moisture
+age_vector <- c("Pioneer", "Building", "Mature")
+for (i in 1:3) {
+  file_name <- paste("loggers_soil_moisture_", age_vector[i], ".png", sep = "")
+  
+  filtered_data <- microclimate %>%
+    filter(
+      sensor == "soil_moisture" &
+        datetime > "2023-04-23" &
+        fire_class == age_vector[i] &
+        cutting != "cut" 
+    ) %>%
+    group_by(fire_class)  
+
+  plot <- ggplot(filtered_data, aes(x = datetime, y = value)) +
+    geom_line(aes(group = loggerID, color = species)) +
+    scale_color_manual(values = c(
+      "Control" = "#7876B1",
+      "Calluna vulgaris" = "#E18727",
+      "Empetrum Negrum" = "#20854E",
+      "Vaccinium vitis idea" = "#BC3C29",
+      "Vaccinium myrtillus" = "#0072B5"
+    )) +
+    scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    facet_grid(drt_treatment ~ substring(as.character(plotID), first = 1, last = 1), scale="free") +
+    ylim(0.10, 0.6)
+  
+  ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
+}
+```
+
