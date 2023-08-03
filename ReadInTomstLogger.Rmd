@@ -185,7 +185,67 @@ microclimate <- microclimate %>%
   mutate(date_in = as.Date(date_in, format="%d/%m/%Y")) 
 
 microclimate2 <- microclimate2 %>%
+  filter(site == "Lygra" & land_type == "DroughtNet" & datetime >= "2023-04-23")
+
+microclimate2 <- microclimate2 %>%
     mutate(date_in = as.Date(date_in, format="%d/%m/%Y"))
+
+microclimate2 <- microclimate2 %>%
+  mutate(hour = substring(datetime, 12, 19),
+         dayornight = ifelse(
+           (datetime > "2023-04-23" & datetime < "2023-04-30" & hour > "05:57:00" & hour < "21:19") |
+           (datetime > "2023-04-30" & datetime < "2023-05-07" & hour > "05:37:00" & hour < "21:37") |
+           (datetime > "2023-05-07" & datetime < "2023-05-14" & hour > "05:18:00" & hour < "21:55") |
+           (datetime > "2023-05-14" & datetime < "2023-06-21" & hour > "05:00:00" & hour < "22:13") |
+           (datetime > "2023-05-21" & datetime < "2023-06-28" & hour > "04:43:00" & hour < "22:30") |
+           (datetime > "2023-05-28" & datetime < "2023-06-04" & hour > "04:29:00" & hour < "22:45") |
+           (datetime > "2023-06-04" & datetime < "2023-06-11" & hour > "04:17:00" & hour < "22:58") |
+           (datetime > "2023-06-11" & datetime < "2023-06-18" & hour > "04:10:00" & hour < "23:08"),
+           "day", "night"))
+
+microclimate <- microclimate %>% 
+  mutate(
+    cutting = case_when(
+      # air temperature cleaning
+      sensor == "air_temperature" & value < -20 ~ "cut",
+
+      # soil temperature cleaning
+      sensor == "soil_temperature" & value < -20 ~ "cut",
+
+      # ground temperature cleaning
+      sensor == "ground_temperature" & value < -20 ~ "cut",
+
+      # soil moisture cleaning
+      sensor == "soil_moisture" & value <= 0 ~ "cut",
+      
+      # soil moisture cleaning
+      sensor == "soil_moisture" & value >= 1 ~ "cut",
+
+      TRUE ~ "keep"
+    )
+  )
+
+microclimate2 <- microclimate2 %>% 
+  mutate(
+    cutting = case_when(
+      # air temperature cleaning
+      sensor == "air_temperature" & value < -20 ~ "cut",
+
+      # soil temperature cleaning
+      sensor == "soil_temperature" & value < -20 ~ "cut",
+
+      # ground temperature cleaning
+      sensor == "ground_temperature" & value < -20 ~ "cut",
+
+      # soil moisture cleaning
+      sensor == "soil_moisture" & value <= 0 ~ "cut",
+      
+      # soil moisture cleaning
+      sensor == "soil_moisture" & value >= 1 ~ "cut",
+
+      TRUE ~ "keep"
+    )
+  )
 
 gc()
 
@@ -1963,9 +2023,9 @@ ggsave(file.path("data/plots", "By_site_species_soil_moisture.png"), graph_soil_
 
 ```{r micro_data2 lygra droughtnet}
 micro_data2 <- microclimate2 %>%
-  filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet") %>%
+  filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet" & loggerID != 95221050) %>%
   mutate(daytime = floor_date(datetime, "day") ) %>%
-  group_by(loggerID, daytime, site, land_type,species) %>%
+  group_by(loggerID, daytime,species,drt_treatment,fire_class) %>%
   summarise(
     air_temperature_mean = mean(value[sensor == "air_temperature"]),
     air_temperature_min = min(value[sensor == "air_temperature"]),
@@ -1992,7 +2052,46 @@ micro_data2 <- micro_data2 %>%
 
 ```
 
-```{r droughtnet_day_and_night}
+```{r microdata3 day or night}
+micro_data3 <- microclimate2 %>%
+  filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet" & loggerID != 95221050 & species !="Control") %>%
+  mutate(daytime = floor_date(datetime, "day") ) %>%
+  group_by(loggerID, daytime,species,drt_treatment,fire_class) %>%
+  summarise(
+    air_temperature_mean = mean(value[sensor == "air_temperature"]),
+    air_temperature_min = min(value[sensor == "air_temperature"]),
+    air_temperature_max = max(value[sensor == "air_temperature"]),
+    air_temperature_range = max(value[sensor == "air_temperature"]) - min(value[sensor == "air_temperature"]),
+    ground_temperature_mean = mean(value[sensor == "ground_temperature"]),
+    ground_temperature_min = min(value[sensor == "ground_temperature"]),
+    ground_temperature_max = max(value[sensor == "ground_temperature"]),
+    ground_temperature_range = max(value[sensor == "ground_temperature"]) - min(value[sensor == "ground_temperature"]),
+    soil_temperature_mean = mean(value[sensor == "soil_temperature"]),
+    soil_temperature_min = min(value[sensor == "soil_temperature"]),
+    soil_temperature_max = max(value[sensor == "soil_temperature"]),
+    soil_temperature_range = max(value[sensor == "soil_temperature"]) - min(value[sensor == "soil_temperature"]),
+    soil_moisture_mean = mean(value[sensor == "soil_moisture"]),
+    soil_moisture_min = min(value[sensor == "soil_moisture"]),
+    soil_moisture_max = max(value[sensor == "soil_moisture"]),
+    soil_moisture_range = max(value[sensor == "soil_moisture"]) - min(value[sensor == "soil_moisture"]),
+  )
 
+micro_data3 <- micro_data2 %>%
+     mutate(below_zero_air = ifelse(air_temperature_min < 0.5, 1, 0)) %>%
+     mutate(below_zero_ground = ifelse(ground_temperature_min < 0.5, 1, 0)) %>%
+     mutate(below_zero_soil = ifelse(soil_temperature_min < 0.5, 1, 0))
+```
+
+```{r droughtnet_day_and_night}
+base_air <- ggplot(micro_data3, aes(x = dayornight, y = air_temperature_mean, fill = dayornight))
+graph_air <- base_air + 
+  geom_boxplot(outlier.shape = NA) +
+  labs(y = "Air Temperature +15cm (°C)",x="Type of the land") +
+  theme_bw() +
+  scale_x_discrete(labels = c("day" = "day", "night" = "night")) +
+  facet_wrap(~drt_treatment, ncol = 3, scales = "free_x") +
+  scale_fill_manual(values = c("day" = "#1e90ff", "night" = "#ff0800"))
+
+ggsave(file.path("data/plots/testdaynight", "By_day_and_night_air.png"), graph_air, height = 40, width = 80, units = "cm")
 ```
 
