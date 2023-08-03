@@ -47,7 +47,7 @@ metatomst <- read_excel(path="durin_tomst_microclimate_loggers_metadata.xlsx", c
 
 # Change formats
 # Date format to day/month/year in 01/12/1990 format
-# PlotID and LoggerID to factor to match later scripts
+# PlotID and LoggerID to factor to match later scripts$
 metatomst$date_in <- format(metatomst$date_in, "%d/%m/%Y")
 metatomst$date_out <- format(metatomst$date_out, "%d/%m/%Y")
 metatomst$loggerID <- as.factor(metatomst$loggerID)
@@ -68,6 +68,20 @@ temp_raw <- map_df(set_names(files), function(file) {
                         # some examples of doubles and integers in X4
                         col_types = "n?nnnnnn"))
 }, .id = "file")
+
+files2 <- dir(path = "data/loggers_data/lygra2", pattern = "^data.*\\.csv$", full.names = TRUE, recursive = TRUE)
+
+temp_raw2 <- map_df(set_names(files2), function(file) {
+  file %>%
+    set_names() %>%
+    map_dfr(~ read_csv2(file = file,
+                        col_names = FALSE,
+                        # specify column types as not all .csv's match
+                        # some examples of doubles and integers in X4
+                        col_types = "n?nnnnnn"))
+}, .id = "file")
+
+
 
 
 ```
@@ -121,7 +135,57 @@ microclimate <- microclimate %>%
   pivot_longer(cols = c(air_temperature, soil_temperature, ground_temperature, soil_moisture), names_to = "sensor", values_to = "value")
 
 
+microclimate2 <- temp_raw2 %>%
+  # rename column names
+  rename("ID" = "file", "datetime" = "X2", "time_zone" = "X3", "soil_temperature" = "X4", "ground_temperature" = "X5", "air_temperature" = "X6", "RawSoilmoisture" = "X7", "Shake" = "X8", "ErrorFlag" = "X9") %>%
+  # change the date and time format
+  mutate(datetime = ymd_hm(datetime)) %>%
 
+  # get logger ID by trimming characters from the file name
+  mutate(
+    loggerID = substr(ID, nchar(ID)-24, nchar(ID)-17),
+    loggerID = as.factor(loggerID)
+  ) %>%
+  select(!c(ID, X1,X10)) %>% # remove unnessary columns
+  distinct() %>%  # only choose unique records
+  left_join(metatomst, by = "loggerID",relationship="many-to-many") %>%
+   group_by(loggerID) %>%
+  filter(
+     datetime > "2023-04-23 00:00:01"
+   ) %>%
+
+ #soil moisture calibration
+  mutate( # calculate soil moisture
+    soil_moisture = soil.moist(
+      rawsoilmoist = RawSoilmoisture,
+      soil_temp = soil_temperature,
+      soilclass = "silt_loam" #it is the closest soil class, but still very wrong. The TMS calibration tool does not have any class for our soil
+    )) %>%
+  select(!c(RawSoilmoisture)) %>% # we want vertical tidy data
+
+    # Choose and order columns to keep for a wide-format database
+    select(c(datetime, site, fire_class, drt_treatment, site_type,land_type, plotID, gps_loc, species, plantID,
+             loggerID, date_in, date_out, h_t_left,c_t_l,h_t_r,c_t_l,h_b_l,c_b_l,h_b_r,c_b_r,
+             air_temperature, ground_temperature, soil_temperature, soil_moisture,
+             Shake, ErrorFlag))
+  # Save clean file
+   current_time <- format(Sys.time(), "%d%m%Y_%H%M%S")
+   write_csv(microclimate, file = paste("data/DURIN_clean_microclimate_2023_",current_time,".csv"))
+  
+microclimate2 <- microclimate2 %>%
+  select(c(datetime, site, fire_class, drt_treatment, site_type,land_type, plotID, gps_loc, species, plantID,
+             loggerID, date_in, date_out, h_t_left,c_t_l,h_t_r,c_t_l,h_b_l,c_b_l,h_b_r,c_b_r,
+             air_temperature, ground_temperature, soil_temperature, soil_moisture,
+             Shake, ErrorFlag)) %>%
+
+  pivot_longer(cols = c(air_temperature, soil_temperature, ground_temperature, soil_moisture), names_to = "sensor", values_to = "value")
+
+
+microclimate <- microclimate %>%
+  mutate(date_in = as.Date(date_in, format="%d/%m/%Y")) 
+
+microclimate2 <- microclimate2 %>%
+    mutate(date_in = as.Date(date_in, format="%d/%m/%Y"))
 
 gc()
 
@@ -140,6 +204,28 @@ Also, here is a list of loggers having shown some problems:
 
 ```{r data_cleaning}
 microclimate <- microclimate %>% 
+  mutate(
+    cutting = case_when(
+      # air temperature cleaning
+      sensor == "air_temperature" & value < -20 ~ "cut",
+
+      # soil temperature cleaning
+      sensor == "soil_temperature" & value < -20 ~ "cut",
+
+      # ground temperature cleaning
+      sensor == "ground_temperature" & value < -20 ~ "cut",
+
+      # soil moisture cleaning
+      sensor == "soil_moisture" & value <= 0 ~ "cut",
+      
+      # soil moisture cleaning
+      sensor == "soil_moisture" & value >= 1 ~ "cut",
+
+      TRUE ~ "keep"
+    )
+  )
+
+microclimate2 <- microclimate2 %>% 
   mutate(
     cutting = case_when(
       # air temperature cleaning
@@ -1473,10 +1559,11 @@ ggsave(file.path("data/plots/senja", file_name), plot, height = 40, width = 80, 
 ```
 
 ```{r box_plot_tryout}
-test_data <- microclimate %>%
-  filter(cutting != "cut" & datetime > "2023-06-24" & datetime < "2023-07-19" & date_in < "07/01/2023") %>%
+
+micro_data <- microclimate %>%
+  filter(cutting != "cut" & datetime > "2023-06-27" & datetime < "2023-07-19" & date_in < "2023-07-01" & land_type != "DroughtNet") %>%
   mutate(daytime = floor_date(datetime, "day") ) %>%
-  group_by(loggerID, daytime, site, land_type ) %>%
+  group_by(loggerID, daytime, site, land_type,species) %>%
   summarise(
     air_temperature_mean = mean(value[sensor == "air_temperature"]),
     air_temperature_min = min(value[sensor == "air_temperature"]),
@@ -1496,38 +1583,58 @@ test_data <- microclimate %>%
     soil_moisture_range = max(value[sensor == "soil_moisture"]) - min(value[sensor == "soil_moisture"]),
   )
 
-test_data <- test_data %>%
+micro_data <- micro_data %>%
      mutate(below_zero_air = ifelse(air_temperature_min < 0.5, 1, 0)) %>%
      mutate(below_zero_ground = ifelse(ground_temperature_min < 0.5, 1, 0)) %>%
      mutate(below_zero_soil = ifelse(soil_temperature_min < 0.5, 1, 0))
 
 ```
-```{r test_plot}
+```{r plot_site_by_landtype}
 
-test_2 <- test_data %>%
-   group_by(site) |>
-  summarise(meanTemp=mean(air_temperature_mean), minT = min(air_temperature_min),maxT = max(air_temperature_max))
 
-base <- ggplot(test_2, aes(x = site, y = meanTemp, fill = site))
-graph3 <- base + 
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(y = "Temperature (°C)") +
-  theme_bw() +
-  scale_x_discrete(limits = c("Senja", "Kautekaino", "Lygra")) +
-  geom_errorbar(aes(ymin = minT, ymax = maxT), 
-                position = position_dodge(width = 0.9), width = 0.15)
-
-print(graph3)
-
-base <- ggplot(test_data, aes(x = site, y = air_temperature_mean))
-graph3bis <- base + 
+base_air <- ggplot(micro_data, aes(x = land_type, y = air_temperature_mean, fill = land_type))
+graph_air <- base_air + 
   geom_boxplot(outlier.shape = NA) +
-  labs(y = "Temperature (°C)") +
+  labs(y = "Air Temperature +15cm (°C)",x="Type of the land") +
   theme_bw() +
-  scale_x_discrete(limits = c("Senja", "Lygra", "Kautekaino")) +
-  scale_y_continuous(limits = c(4, 25))
+  scale_x_discrete(labels = c("Forested" = "Forested", "Open" = "Open")) +
+  facet_wrap(~site, ncol = 3, scales = "free_x") +
+  scale_fill_manual(values = c("Forested" = "#1e90ff", "Open" = "#ff0800"))
 
-print(graph3bis)
+ggsave(file.path("data/plots", "By_site_by_landtype_air_temp.png"), graph_air, height = 40, width = 80, units = "cm")
+
+base_ground <- ggplot(micro_data, aes(x = land_type, y = ground_temperature_mean, fill = land_type))
+graph_ground <- base_ground+ 
+  geom_boxplot(outlier.shape = NA) +
+  labs(y = "Ground Temperature +2cm (°C)",x="Type of the land") +
+  theme_bw() +
+  scale_x_discrete(labels = c("Forested" = "Forested", "Open" = "Open")) +
+  facet_wrap(~site, ncol = 3, scales = "free_x") +
+  scale_fill_manual(values = c("Forested" = "#1e90ff", "Open" = "#ff0800"))
+
+ggsave(file.path("data/plots", "By_site_by_landtype_ground_temp.png"), graph_ground, height = 40, width = 80, units = "cm")
+
+base_soil <- ggplot(micro_data, aes(x = land_type, y = soil_temperature_mean, fill = land_type))
+graph_soil <- base_soil + 
+  geom_boxplot(outlier.shape = NA) +
+  labs(y = "Soil Temperature -6cm (°C)",x="Type of the land") +
+  theme_bw() +
+  scale_x_discrete(labels = c("Forested" = "Forested", "Open" = "Open")) +
+  facet_wrap(~site, ncol = 3, scales = "free_x") +
+  scale_fill_manual(values = c("Forested" = "#1e90ff", "Open" = "#ff0800"))
+
+ggsave(file.path("data/plots", "By_site_by_landtype_soil_temp.png"), graph_soil, height = 40, width = 80, units = "cm")
+
+base_moist <- ggplot(micro_data, aes(x = land_type, y = soil_moisture_mean, fill = land_type))
+graph_moist <- base_moist + 
+  geom_boxplot(outlier.shape = NA) +
+  labs(y = "Soil Moisture (°C)",x="Type of the land") +
+  theme_bw() +
+  scale_x_discrete(labels = c("Forested" = "Forested", "Open" = "Open")) +
+  facet_wrap(~site, ncol = 3, scales = "free_x") +
+  scale_fill_manual(values = c("Forested" = "#1e90ff", "Open" = "#ff0800"))
+
+ggsave(file.path("data/plots", "By_site_by_landtype_soil_moist.png"), graph_moist, height = 40, width = 80, units = "cm")
 
 
 ```
@@ -1540,9 +1647,61 @@ to_sup <- microclimate %>%
   group_by(loggerID) %>%
   distinct(loggerID)
 
-to_sup <- test_data %>%
+to_sup <- micro_data %>%
   filter(is.infinite(soil_moisture_min)) %>%
   distinct(loggerID)
+
+```
+
+```{r species_test}
+base_air_species <- ggplot(micro_data, aes(x = land_type, y = air_temperature_mean,fill=species))
+graph_air_species <- base_air_species + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("#1e90ff","#ff0800","#E2E010","#10E110"))+ 
+    facet_wrap(~site, scales = "free_x") +
+  labs(y = "Air Temperature +15cm (°C)",x="Type of the land") +
+  theme_bw() 
+
+  
+
+ggsave(file.path("data/plots", "By_site_species_air_temp.png"), graph_air_species, height = 40, width = 80, units = "cm")
+
+base_ground_species <- ggplot(micro_data, aes(x = land_type, y = ground_temperature_mean,fill=species))
+graph_ground_species <- base_ground_species + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("#1e90ff","#ff0800","#E2E010","#10E110"))+ 
+    facet_wrap(~site, scales = "free_x") +
+  labs(y = "Ground Temperature +2cm (°C)",x="Type of the land") +
+  theme_bw() 
+
+  
+
+ggsave(file.path("data/plots", "By_site_species_ground_temp.png"), graph_ground_species, height = 40, width = 80, units = "cm")
+# 
+
+base_soil_species <- ggplot(micro_data, aes(x = land_type, y = soil_temperature_mean,fill=species))
+graph_soil_species <- base_soil_species + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("#1e90ff","#ff0800","#E2E010","#10E110"))+ 
+    facet_wrap(~site, scales = "free_x") +
+  labs(y = "Soil Temperature -6 (°C)",x="Type of the land") +
+  theme_bw() 
+
+  
+
+ggsave(file.path("data/plots", "By_site_species_soil_temp.png"), graph_air_species, height = 40, width = 80, units = "cm")
+# 
+base_soil_moisture_species <- ggplot(micro_data, aes(x = land_type, y = soil_moisture_mean,fill=species))
+graph_soil_moisture_species <- base_soil_moisture_species + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("#1e90ff","#ff0800","#E2E010","#10E110"))+ 
+    facet_wrap(~site, scales = "free_x") +
+  labs(y = "Air Temperature +15cm (°C)",x="Type of the land") +
+  theme_bw() 
+
+  
+
+ggsave(file.path("data/plots", "By_site_species_soil_moisture.png"), graph_air_species, height = 40, width = 80, units = "cm")
 
 ```
 
