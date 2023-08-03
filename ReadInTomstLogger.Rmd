@@ -379,7 +379,7 @@ for (i in 1:9) {
     plot_number <- i + j/10
     file_name <- paste("loggers_soil_temperature_test", as.character(i), "_", as.character(j), ".png", sep = "")
 
-    filtered_data <- microclimate %>%
+    filtered_data <- microclimate2 %>%
       filter(
         sensor == "soil_temperature" &
           datetime > "2023-04-23" &
@@ -413,7 +413,7 @@ for (i in 1:9) {
     plot_number <- i + j/10
     file_name <- paste("loggers_ground_temperature_test", as.character(i), "_", as.character(j), ".png", sep = "")
 
-    filtered_data <- microclimate %>%
+    filtered_data <- microclimate2 %>%
       filter(
         sensor == "ground_temperature" &
           datetime > "2023-04-23" &
@@ -448,7 +448,7 @@ for (i in 1:9) {
     plot_number <- i + j/10
     file_name <- paste("loggers_air_temperature_test", as.character(i), "_", as.character(j), ".png", sep = "")
 
-    filtered_data <- microclimate %>%
+    filtered_data <- microclimate2 %>%
       filter(
         sensor == "air_temperature" &
           datetime > "2023-04-23" &
@@ -483,7 +483,7 @@ for (i in 1:9) {
     plot_number <- i + j/10
     file_name <- paste("loggers_soil_moisture_test", as.character(i), "_", as.character(j), ".png", sep = "")
 
-    filtered_data <- microclimate %>%
+    filtered_data <- microclimate2 %>%
       filter(
         sensor == "soil_moisture" &
           datetime > "2023-04-23" &
@@ -754,10 +754,12 @@ ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units 
 #air_temp
 file_name <- paste("loggers_air_temperature_control_comparaison_same", age_vector[i], ".png", sep = "")
 
-filtered_data <- microclimate %>%
+filtered_data <- microclimate2 %>%
   filter(
     sensor == "air_temperature" &
       datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
       species == "Control" &
       cutting != "cut" 
   ) %>%
@@ -781,10 +783,12 @@ ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units 
 #ground_temp
 file_name <- paste("loggers_ground_temperature_control_comparaison_same", age_vector[i], ".png", sep = "")
 
-filtered_data <- microclimate %>%
+filtered_data <- microclimate2 %>%
   filter(
     sensor == "ground_temperature" &
       datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
       species == "Control" &
       cutting != "cut" 
   ) %>%
@@ -809,10 +813,12 @@ ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units 
 #soil_temp
 file_name <- paste("loggers_soil_temperature_control_comparaison_same", age_vector[i], ".png", sep = "")
 
-filtered_data <- microclimate %>%
+filtered_data <- microclimate2 %>%
   filter(
     sensor == "air_temperature" &
       datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
       species == "Control" &
       cutting != "cut" 
   ) %>%
@@ -837,10 +843,12 @@ ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units 
 #air_temp
 file_name <- paste("loggers_soil_moisture_control_comparaison_same", age_vector[i], ".png", sep = "")
 
-filtered_data <- microclimate %>%
+filtered_data <- microclimate2 %>%
   filter(
     sensor == "soil_moisture" &
       datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
       species == "Control" &
       cutting != "cut" 
   ) %>%
@@ -871,10 +879,12 @@ Here it averages the combined 4 species (excludes "Control" loggers) and plots t
 #air_temp
 file_name <- paste("loggers_air_temperature_mean_species", age_vector[i], ".png", sep = "")
 
-filtered_data <- microclimate %>%
+filtered_data <- microclimate2 %>%
   filter(
     sensor == "air_temperature" &
       datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
       cutting != "cut" &
       !is.na(drt_treatment) &
       species != "Control"
@@ -894,10 +904,12 @@ ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units 
 #ground_temp
 file_name <- paste("loggers_ground_temperature_mean_species", age_vector[i], ".png", sep = "")
 
-filtered_data <- microclimate %>%
+filtered_data <- microclimate2 %>%
   filter(
     sensor == "ground_temperature" &
       datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
       cutting != "cut" &
       !is.na(drt_treatment)&
       species != "Control"
@@ -917,10 +929,12 @@ ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units 
 #soil_temp
 file_name <- paste("loggers_soil_temperature_mean_species", age_vector[i], ".png", sep = "")
 
-filtered_data <- microclimate %>%
+filtered_data <- microclimate2 %>%
   filter(
     sensor == "soil_temperature" &
       datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
       cutting != "cut" &
       !is.na(drt_treatment)&
       species != "Control"
@@ -940,10 +954,12 @@ ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units 
 #soil_moisture
 file_name <- paste("loggers_soil_moisture_mean_species", age_vector[i], ".png", sep = "")
 
-filtered_data <- microclimate %>%
+filtered_data <- microclimate2 %>%
   filter(
     sensor == "soil_moisture" &
       datetime > "2023-04-23" &
+      site == "Lygra" &
+      datetime < "2023-06-20" &
       cutting != "cut" &
       !is.na(drt_treatment)&
       species != "Control"
@@ -961,6 +977,246 @@ plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
 ggsave(file.path("data/plots", file_name), plot, height = 40, width = 80, units = "cm")
 
 ```
+```{r mean_drt_age_merged}
+#air_temp
+file_name <- paste("loggers_air_temperature_mean_species_merged", age_vector[i], ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+    sensor == "air_temperature" &
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)&
+      species != "Control"
+  ) %>%
+  group_by(fire_class, drt_treatment, datetime) %>%
+  summarize(mean_value = mean(value))
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+  geom_line(aes(group = as.factor(drt_treatment), color = as.factor(drt_treatment))) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Mean Air Temperature of every species",x = "Date", y = " Air Temperature (Celsius)")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(-10, 40)
+
+ggsave(file.path("data/plots/test", file_name), plot, height = 40, width = 80, units = "cm")
+
+
+#ground_temp
+file_name <- paste("loggers_ground_temperature_mean_species_merged", age_vector[i], ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+    sensor == "ground_temperature" &
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)&
+      species != "Control"
+  ) %>%
+  group_by(fire_class, drt_treatment, datetime) %>%
+  summarize(mean_value = mean(value))
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+  geom_line(aes(group = as.factor(drt_treatment), color = as.factor(drt_treatment))) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Mean Ground Temperature of every species",x = "Date", y = " Ground Temperature (Celsius)")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(-10, 40)
+
+ggsave(file.path("data/plots/test", file_name), plot, height = 40, width = 80, units = "cm")
+
+
+#soil_temp
+file_name <- paste("loggers_soil_temperature_mean_species_merged", age_vector[i], ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+    sensor == "soil_temperature" &
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)&
+      species != "Control"
+  ) %>%
+  group_by(fire_class, drt_treatment, datetime) %>%
+  summarize(mean_value = mean(value))
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+  geom_line(aes(group = as.factor(drt_treatment), color = as.factor(drt_treatment))) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Mean Soil Temperature of every species",x = "Date", y = " Soil Temperature (Celsius)")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(-10, 40)
+
+ggsave(file.path("data/plots/test", file_name), plot, height = 40, width = 80, units = "cm")
+
+#soil_moisture
+file_name <- paste("loggers_soil_moisture_mean_species_merged", age_vector[i], ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+    sensor == "soil_moisture" &
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)&
+      species != "Control"
+  ) %>%
+  group_by(fire_class, drt_treatment, datetime) %>%
+  summarize(mean_value = mean(value))
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+  geom_line(aes(group = as.factor(drt_treatment), color = as.factor(drt_treatment))) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Mean Soil Moisture of every species",x = "Date", y = " Soil Moisture (%)")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(0.15, 0.6)
+
+ggsave(file.path("data/plots/test", file_name), plot, height = 40, width = 80, units = "cm")
+
+```
+```{r mean_species_vs_control}
+#air_temp
+file_name <- paste("loggers_air_control_vs_shrub", ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+    sensor == "air_temperature" &
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)
+  ) %>%
+  mutate(spec = ifelse(species=="Control","Control","Shrub")) %>%
+  group_by(fire_class,spec, datetime) %>%
+  summarize(mean_value = value)
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+  geom_line(aes(group = spec, color = spec)) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Mean Air Temperature",x = "Date", y = "Air Temperature (Celsius)")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(-10, 40)
+
+ggsave(file.path("data/plots/test3", file_name), plot, height = 40, width = 80, units = "cm")
+
+
+#ground_temp
+file_name <- paste("loggers_ground_control_vs_shrub", ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+    sensor == "ground_temperature" &
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)
+  ) %>%
+  mutate(spec = ifelse(species=="Control","Control","Shrub")) %>%
+  group_by(fire_class,spec,datetime) %>%
+  summarize(mean_value = value)
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+  geom_line(aes(group = spec, color = spec)) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Mean Ground Temperature of every species",x = "Date", y = " Ground Temperature (Celsius)")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(-10, 40)
+
+ggsave(file.path("data/plots/test3", file_name), plot, height = 40, width = 80, units = "cm")
+
+
+#soil_temp
+file_name <- paste("loggers_soil_control_vs_shrub", ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+    sensor == "soil_temperature" &
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)
+  ) %>%
+  mutate(spec = ifelse(species=="Control","Control","Shrub")) %>%
+  group_by(fire_class,spec,datetime) %>%
+  summarize(mean_value = value)
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+  geom_line(aes(group = spec, color = spec)) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Mean Soil Temperature of every species",x = "Date", y = " Soil Temperature (Celsius)")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(-10, 40)
+
+ggsave(file.path("data/plots/test3", file_name), plot, height = 40, width = 80, units = "cm")
+
+#soil_moisture
+file_name <- paste("loggers_soil_moisture_control_vs_shrub", ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+    sensor == "soil_moisture" &
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)
+  ) %>%
+  mutate(spec = ifelse(species=="Control","Control","Shrub")) %>%
+  group_by(fire_class,spec,datetime) %>%
+  summarize(mean_value = value)
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+  geom_line(aes(group = spec, color = spec)) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Soil Moisture",x = "Date", y = " Soil Moisture(%))")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(0.15, 0.6)
+
+ggsave(file.path("data/plots/test3", file_name), plot, height = 40, width = 80, units = "cm")
+```
+
+
+
+
+```{r merged_sensors}
+#air_temp
+file_name <- paste("loggers_temperature_sensor_merged", age_vector[i], ".png", sep = "")
+
+filtered_data <- microclimate2 %>%
+  filter(
+      datetime > "2023-04-23" &
+      datetime < "2023-06-20" &
+      site == "Lygra" &
+      cutting != "cut" &
+      !is.na(drt_treatment)&
+      species != "Control" &
+        sensor != "soil_moisture"
+  ) %>%
+  group_by(fire_class, sensor, datetime) %>%
+  summarize(mean_value = mean(value))
+
+plot <- ggplot(filtered_data, aes(x = datetime, y = mean_value)) +
+   geom_line(aes(group = sensor, color = sensor)) +
+  scale_x_datetime(date_breaks = "1 week", minor_breaks = "1 day", date_labels = "%e/%m/%y") +
+    labs(title ="Mean Temperature",x = "Date", y = "Temperature (Celsius)")+
+  facet_grid(~fire_class, scale="free")+
+  ylim(-5, 35)
+
+ggsave(file.path("data/plots/test2", file_name), plot, height = 40, width = 80, units = "cm")
+
+```
+
+
 Her the average for every separated species is taking for each drt_treatment in each fire_class.
 
 ```{r mean_per_species_fire_class_drt_treatment}
@@ -1689,19 +1945,54 @@ graph_soil_species <- base_soil_species +
 
   
 
-ggsave(file.path("data/plots", "By_site_species_soil_temp.png"), graph_air_species, height = 40, width = 80, units = "cm")
+ggsave(file.path("data/plots", "By_site_species_soil_temp.png"), graph_soil_species, height = 40, width = 80, units = "cm")
 # 
 base_soil_moisture_species <- ggplot(micro_data, aes(x = land_type, y = soil_moisture_mean,fill=species))
 graph_soil_moisture_species <- base_soil_moisture_species + 
   geom_boxplot() +
   scale_fill_manual(values = c("#1e90ff","#ff0800","#E2E010","#10E110"))+ 
     facet_wrap(~site, scales = "free_x") +
-  labs(y = "Air Temperature +15cm (°C)",x="Type of the land") +
+  labs(y = "Soil moisture (%)",x="Type of the land") +
   theme_bw() 
 
   
 
-ggsave(file.path("data/plots", "By_site_species_soil_moisture.png"), graph_air_species, height = 40, width = 80, units = "cm")
+ggsave(file.path("data/plots", "By_site_species_soil_moisture.png"), graph_soil_moisture_species, height = 40, width = 80, units = "cm")
+
+```
+
+```{r micro_data2 lygra droughtnet}
+micro_data2 <- microclimate2 %>%
+  filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet") %>%
+  mutate(daytime = floor_date(datetime, "day") ) %>%
+  group_by(loggerID, daytime, site, land_type,species) %>%
+  summarise(
+    air_temperature_mean = mean(value[sensor == "air_temperature"]),
+    air_temperature_min = min(value[sensor == "air_temperature"]),
+    air_temperature_max = max(value[sensor == "air_temperature"]),
+    air_temperature_range = max(value[sensor == "air_temperature"]) - min(value[sensor == "air_temperature"]),
+    ground_temperature_mean = mean(value[sensor == "ground_temperature"]),
+    ground_temperature_min = min(value[sensor == "ground_temperature"]),
+    ground_temperature_max = max(value[sensor == "ground_temperature"]),
+    ground_temperature_range = max(value[sensor == "ground_temperature"]) - min(value[sensor == "ground_temperature"]),
+    soil_temperature_mean = mean(value[sensor == "soil_temperature"]),
+    soil_temperature_min = min(value[sensor == "soil_temperature"]),
+    soil_temperature_max = max(value[sensor == "soil_temperature"]),
+    soil_temperature_range = max(value[sensor == "soil_temperature"]) - min(value[sensor == "soil_temperature"]),
+    soil_moisture_mean = mean(value[sensor == "soil_moisture"]),
+    soil_moisture_min = min(value[sensor == "soil_moisture"]),
+    soil_moisture_max = max(value[sensor == "soil_moisture"]),
+    soil_moisture_range = max(value[sensor == "soil_moisture"]) - min(value[sensor == "soil_moisture"]),
+  )
+
+micro_data2 <- micro_data2 %>%
+     mutate(below_zero_air = ifelse(air_temperature_min < 0.5, 1, 0)) %>%
+     mutate(below_zero_ground = ifelse(ground_temperature_min < 0.5, 1, 0)) %>%
+     mutate(below_zero_soil = ifelse(soil_temperature_min < 0.5, 1, 0))
+
+```
+
+```{r droughtnet_day_and_night}
 
 ```
 
