@@ -195,7 +195,10 @@ microclimate2 <- microclimate2 %>%
     mutate(date_in = as.Date(date_in, format="%d/%m/%Y"))
 
 microclimate2 <- microclimate2 %>%
+<<<<<<< HEAD
   filter(site == "Lygra") %>%
+=======
+>>>>>>> beffb79ee64e525a1a801e208a8ab7acf7906cdd
   mutate(hour = substring(datetime, 12, 19),
          dayornight = ifelse(
            (datetime > "2023-04-23" & datetime < "2023-04-30" & hour > "05:57:00" & hour < "21:19") |
@@ -1252,7 +1255,6 @@ ggsave(file.path("data/plots/test3", file_name), plot, height = 40, width = 80, 
 
 
 
-
 ```{r merged_sensors}
 #air_temp
 file_name <- paste("loggers_temperature_sensor_merged", age_vector[i], ".png", sep = "")
@@ -2031,6 +2033,7 @@ ggsave(file.path("data/plots", "By_site_species_soil_moisture.png"), graph_soil_
 
 
 micro_data2 <- microclimate2 %>%
+<<<<<<< HEAD
   filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet" & loggerID != 95221050 & species != "Control") %>%
   mutate(daytime = floor_date(datetime, "day")) %>%
   group_by(loggerID,daytime,species,drt_treatment,fire_class,plotID) %>%
@@ -2067,6 +2070,11 @@ micro_data3 <- microclimate2 %>%
   filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet" & loggerID != 95221050 & loggerID !=94195237) %>%
   mutate(daytime = floor_date(datetime, "day"),species=species ) %>%
   group_by(loggerID, daytime,dayornight,species,drt_treatment,fire_class,plotID) %>%
+=======
+  filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet" & loggerID != 95221050) %>%
+  mutate(daytime = floor_date(datetime, "day") ) %>%
+  group_by(loggerID, daytime,species,drt_treatment,fire_class) %>%
+>>>>>>> beffb79ee64e525a1a801e208a8ab7acf7906cdd
   summarise(
     air_temperature_mean = mean(value[sensor == "air_temperature"]),
     air_temperature_min = min(value[sensor == "air_temperature"]),
@@ -2324,4 +2332,5 @@ summary(dn_model_6_air)
 
 
 ```
+
 
