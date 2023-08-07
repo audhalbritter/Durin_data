@@ -2310,6 +2310,11 @@ summary(dn_model_3_air)
 dn_model_4_air <- lmer(air_temperature_mean ~ dayornight + (1|plotID/loggerID), data = micro_linear2)
 summary(dn_model_4_air)
 
+stargazer(dn_model_4_air, type = "text",
+          digits = 3,
+          star.cutoffs = c(0.05, 0.01, 0.001),
+          digit.separator = "")
+
 dn_model_5_air <- lmer(air_temperature_mean ~ species + (1|plotID/loggerID), data = micro_linear2)
 summary(dn_model_5_air)
 
