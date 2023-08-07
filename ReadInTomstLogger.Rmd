@@ -16,6 +16,8 @@ install.packages("fs")
 install.packages("purrr")
 install.packages("readr")
 install.packages("ggplot2")
+install.packages("lme4")
+install.packages("stargazer")
 ```
 
 And to load them.
@@ -32,6 +34,8 @@ library(fs)
 library(purrr)
 library(readr)
 library(ggplot2)
+library(lme4)
+library(stargazer)
 source("soilmoisture_correction.R")
 ```
 
@@ -105,7 +109,7 @@ microclimate <- temp_raw %>%
   left_join(metatomst, by = "loggerID",relationship="many-to-many") %>%
    group_by(loggerID) %>%
   filter(
-     datetime > "2023-04-23 00:00:01"
+     datetime > "2023-06-01 00:00:01"
    ) %>%
 
  #soil moisture calibration
@@ -191,6 +195,7 @@ microclimate2 <- microclimate2 %>%
     mutate(date_in = as.Date(date_in, format="%d/%m/%Y"))
 
 microclimate2 <- microclimate2 %>%
+  filter(site == "Lygra") %>%
   mutate(hour = substring(datetime, 12, 19),
          dayornight = ifelse(
            (datetime > "2023-04-23" & datetime < "2023-04-30" & hour > "05:57:00" & hour < "21:19") |
@@ -1874,12 +1879,12 @@ plot <- ggplot(filtered_data, aes(x = datetime, y = value, color = as.factor(plo
 ggsave(file.path("data/plots/senja", file_name), plot, height = 40, width = 80, units = "cm")
 ```
 
-```{r box_plot_tryout}
+```{r micro_data_filter}
 
 micro_data <- microclimate %>%
   filter(cutting != "cut" & datetime > "2023-06-27" & datetime < "2023-07-19" & date_in < "2023-07-01" & land_type != "DroughtNet") %>%
   mutate(daytime = floor_date(datetime, "day") ) %>%
-  group_by(loggerID, daytime, site, land_type,species) %>%
+  group_by(loggerID, daytime, site, land_type,species,plotID) %>%
   summarise(
     air_temperature_mean = mean(value[sensor == "air_temperature"]),
     air_temperature_min = min(value[sensor == "air_temperature"]),
@@ -1958,12 +1963,12 @@ ggsave(file.path("data/plots", "By_site_by_landtype_soil_moist.png"), graph_mois
 ```{r sup}
 #LOGGERS WITH NO METADATA
 
-to_sup <- microclimate %>%
+to_sup <- microclimate2 %>%
   filter(is.na(land_type)) %>%
   group_by(loggerID) %>%
   distinct(loggerID)
 
-to_sup <- micro_data %>%
+to_sup <- microclimate %>%
   filter(is.infinite(soil_moisture_min)) %>%
   distinct(loggerID)
 
@@ -2026,9 +2031,9 @@ ggsave(file.path("data/plots", "By_site_species_soil_moisture.png"), graph_soil_
 
 
 micro_data2 <- microclimate2 %>%
-  filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet" & loggerID != 95221050 & species != Control %>%
+  filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet" & loggerID != 95221050 & species != "Control") %>%
   mutate(daytime = floor_date(datetime, "day")) %>%
-  group_by(loggerID,daytime,species,drt_treatment,fire_class) %>%
+  group_by(loggerID,daytime,species,drt_treatment,fire_class,plotID) %>%
   summarise(
     air_temperature_mean = mean(value[sensor == "air_temperature"]),
     air_temperature_min = min(value[sensor == "air_temperature"]),
@@ -2045,22 +2050,23 @@ micro_data2 <- microclimate2 %>%
     soil_moisture_mean = mean(value[sensor == "soil_moisture"]),
     soil_moisture_min = min(value[sensor == "soil_moisture"]),
     soil_moisture_max = max(value[sensor == "soil_moisture"]),
-    soil_moisture_range = max(value[sensor == "soil_moisture"]) - min(value[sensor == "soil_moisture"]),
+    soil_moisture_range = max(value[sensor == "soil_moisture"]) - min(value[sensor == "soil_moisture"])
   )
 
 micro_data2 <- micro_data2 %>%
      mutate(below_zero_air = ifelse(air_temperature_min < 0.5, 1, 0)) %>%
      mutate(below_zero_ground = ifelse(ground_temperature_min < 0.5, 1, 0)) %>%
-     mutate(below_zero_soil = ifelse(soil_temperature_min < 0.5, 1, 0))
+     mutate(below_zero_soil = ifelse(soil_temperature_min < 0.5, 1, 0)) %>%
+   mutate(species2 = ifelse(species == "Control", "Control", "Shrubs"))
 
 ```
 
-```{r microdata3 day or night}
+```{r micro_data3 day or night}
 
 micro_data3 <- microclimate2 %>%
   filter(cutting != "cut" & datetime > "2023-04-28" & datetime < "2023-06-20" & land_type == "DroughtNet" & loggerID != 95221050 & loggerID !=94195237) %>%
   mutate(daytime = floor_date(datetime, "day"),species=species ) %>%
-  group_by(loggerID, daytime,dayornight,species,drt_treatment,fire_class) %>%
+  group_by(loggerID, daytime,dayornight,species,drt_treatment,fire_class,plotID) %>%
   summarise(
     air_temperature_mean = mean(value[sensor == "air_temperature"]),
     air_temperature_min = min(value[sensor == "air_temperature"]),
@@ -2181,5 +2187,136 @@ graph_soilm<- base_soilm+
 ggsave(file.path("data/plots/testdayornight", "By_controlvsshrub_soil_moisture_fire.png"), graph_soilm, height = 40, width = 80, units = "cm")
 
   
+```
+
+```{r linear_model_tests_lyse}
+micro_linear <- micro_data %>%
+  filter(site != "Kautekaino")
+
+
+micro_linear$individual <- with(micro_linear, interaction(species, plotID))
+
+###air_temperature
+# Example of fixed effects comparisons, with same random effects structure
+model_1_air <- lmer(air_temperature_mean ~ site + (1|site/land_type/loggerID), data = micro_linear)
+
+summary(model_1_air)
+#fixed
+model_2_air <- lmer(air_temperature_mean ~ site + land_type + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_2_air)
+
+model_3_air <- lmer(air_temperature_mean ~ site*land_type + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_3_air)
+
+model_4_air <- lmer(air_temperature_mean ~ site*land_type*species + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_4_air)
+anova(model_1_air, model_2_air, model_3_air, model_4_air)
+#random
+model_5_air <- lmer(air_temperature_mean ~ site + (1|site/land_type/individual) + (1|species), data = micro_linear)
+summary(model_5_air)
+anova(model_1_air, model_5_air)
+
+###ground_temperature
+# Example of fixed effects comparisons, with same random effects structure
+model_1_ground <- lmer(ground_temperature_mean ~ site + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_1_ground)
+#fixed
+model_2_ground <- lmer(ground_temperature_mean ~ site + land_type + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_2_ground)
+
+model_3_ground <- lmer(ground_temperature_mean ~ site*land_type + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_3_ground)
+
+model_4_ground <- lmer(ground_temperature_mean ~ site*land_type*species + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_4_ground)
+anova(model_1_ground, model_2_ground, model_3_ground, model_4_ground)
+#random
+model_5_ground <- lmer(ground_temperature_mean ~ site + (1|site/land_type/individual) + (1|species), data = micro_linear)
+summary(model_5_ground)
+anova(model_1_ground, model_5_ground)
+
+###soil_temperature
+# Example of fixed effects comparisons, with same random effects structure
+model_1_soil <- lmer(soil_temperature_mean ~ site + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_1_soil)
+#fixed
+model_2_soil <- lmer(soil_temperature_mean ~ site + land_type + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_2_soil)
+
+model_3_soil <- lmer(soil_temperature_mean ~ site*land_type + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_3_soil)
+
+model_4_soil <- lmer(soil_temperature_mean ~ site*land_type*species + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_4_soil)
+anova(model_1_soil, model_2_soil, model_3_soil, model_4_soil)
+#random
+model_5_soil <- lmer(soil_temperature_mean ~ site + (1|site/land_type/individual) + (1|species), data = micro_linear)
+summary(model_5_soil)
+anova(model_1_soil, model_5_soil)
+
+###air_temperature
+# Example of fixed effects comparisons, with same random effects structure
+model_1_moist <- lmer(soil_moisture_mean ~ site + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_1_air)
+#fixed
+model_2_moist <- lmer(soil_moisture_mean ~ site + land_type + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_2_air)
+
+model_3_moist <- lmer(soil_moisture_mean ~ site*land_type + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_3_air)
+
+model_4_moist <- lmer(soil_moisture_mean ~ site*land_type*species + (1|site/land_type/individual), data = micro_linear)
+
+summary(model_4_moist)
+anova(model_1_moist, model_2_moist, model_3_moist, model_4_moist)
+#random
+model_5_moist <- lmer(soil_moisture_mean ~ site + (1|site/land_type/individual) + (1|species), data = micro_linear)
+summary(model_5_moist)
+anova(model_1_moist, model_5_moist)
+
+
+
+```
+```{r linear_lygra_dn}
+micro_linear2 <- micro_data3
+
+micro_linear2$individual <- with(micro_linear2, interaction(plotID, species))
+
+###air_temperature
+# Example of fixed effects comparisons, with same random effects structure
+dn_model_1_air <- lmer(air_temperature_mean ~ drt_treatment + (1|plotID/loggerID), data = micro_linear2)
+summary(dn_model_1_air)
+
+dn_model_2_air <- lmer(air_temperature_mean ~ drt_treatment + (1|plotID/loggerID) + (1|fire_class), data = micro_linear2)
+summary(dn_model_2_air)
+
+dn_model_3_air <- lmer(air_temperature_mean ~ drt_treatment + (1|plotID/loggerID) + (1|species), data = micro_linear2)
+summary(dn_model_3_air)
+
+dn_model_4_air <- lmer(air_temperature_mean ~ dayornight + (1|plotID/loggerID), data = micro_linear2)
+summary(dn_model_4_air)
+
+dn_model_5_air <- lmer(air_temperature_mean ~ species + (1|plotID/loggerID), data = micro_linear2)
+summary(dn_model_5_air)
+
+dn_model_6_air <- lmer(air_temperature_mean ~ fire_class + (1|plotID/loggerID) + (1|species2), data = micro_linear2)
+summary(dn_model_6_air)
+#fixed
+
+
 ```
 
